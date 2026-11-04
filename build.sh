@@ -21,8 +21,9 @@ cat > "$APP/Contents/Info.plist" <<'EOF'
 EOF
 swiftc -O -swift-version 5 -target arm64-apple-macos13 main.swift -o "$APP/Contents/MacOS/ClaudeClip"
 "$APP/Contents/MacOS/ClaudeClip" --selftest
-# Sign with your Apple Development certificate if you have one, so macOS keeps the
-# Accessibility and Documents permissions across rebuilds. Otherwise ad hoc (CI).
-ID=$(security find-identity -v -p codesigning 2>/dev/null | awk '/Apple Development/ {print $2; exit}')
+# Sign with the certificate named in .sign-identity (gitignored; a SHA-1 from
+# `security find-identity -v -p codesigning`), so macOS keeps the Accessibility and
+# Documents permissions across rebuilds. No file = ad hoc. Never picks a certificate on its own.
+ID=$(tr -d '[:space:]' 2>/dev/null < .sign-identity || true)
 codesign --force -s "${ID:--}" "$APP"
 echo "Built $APP"

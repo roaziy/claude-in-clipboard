@@ -84,7 +84,7 @@ Click the menu bar icon to see which project it will use (name and path) and whi
 - VS Code only, not Cursor or VS Code Insiders.
 - Two open projects with the same folder name: it picks the newer one.
 - Every prompt is a fresh chat, so no follow-ups.
-- `build.sh` signs with your Apple Development certificate if you have one, so permissions survive rebuilds. Without one it signs ad hoc, and macOS forgets the permissions after every rebuild. Turn them off and on again.
+- Building from source signs ad hoc, so macOS forgets the permissions after every rebuild. To keep them, put your own certificate's SHA-1 (from `security find-identity -v -p codesigning`) in a `.sign-identity` file next to `build.sh`. It's gitignored.
 - You can't see what you type. To show the prompt box, set `panel.alphaValue = 1` in `main.swift` and rebuild.
 
 ## Development
