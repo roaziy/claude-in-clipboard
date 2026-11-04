@@ -161,7 +161,7 @@ final class App: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSWindowD
         ghost.backgroundColor = .clear
         ghost.hasShadow = false
         ghost.animationBehavior = .none // appear/disappear instantly, no system fade
-        ghost.alphaValue = 0.6
+        ghost.alphaValue = 0.9 // overlay opacity: lower = fainter
         ghost.ignoresMouseEvents = true
         ghost.level = .statusBar
         ghost.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
