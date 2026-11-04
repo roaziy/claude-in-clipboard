@@ -70,6 +70,7 @@ Click the menu bar icon to see which folder it used.
 
 - Runs `claude -p` locally with your own Claude Code login. No other servers.
 - Claude only gets read-only tools (`Read`, `Grep`, `Glob`). It can't edit files or run commands.
+- The project's `.claude/settings.json` (including hooks) is ignored (`--setting-sources user`), so a cloned repo can't run commands on your Mac.
 - Chats aren't saved (`--no-session-persistence`), so nothing appears in `claude --resume`.
 - MCP servers are skipped (`--strict-mcp-config`), which roughly halves startup time.
 - Your prompt is passed on stdin, never through a shell string.

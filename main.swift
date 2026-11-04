@@ -174,7 +174,9 @@ final class App: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSWindowD
         p.executableURL = URL(fileURLWithPath: "/bin/zsh")
         // Login shell finds `claude` on your PATH; "$@" passes args with no shell parsing.
         // Read-only tools: Claude can look at the code but can't edit files or run commands.
+        // User settings only: a cloned repo's .claude/settings.json hooks would otherwise run shell commands.
         p.arguments = ["-lc", "exec claude \"$@\"", "zsh", "-p", "--strict-mcp-config", "--no-session-persistence",
+                       "--setting-sources", "user",
                        "--tools", "Read,Grep,Glob", "--append-system-prompt", systemPrompt]
         p.currentDirectoryURL = dir
         p.standardInput = inp; p.standardOutput = out; p.standardError = err
