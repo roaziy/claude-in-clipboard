@@ -152,7 +152,7 @@ final class App: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSWindowD
         ghost.level = .statusBar
         ghost.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         ghost.contentView = GhostView()
-        ghostLabel.font = .monospacedSystemFont(ofSize: 13, weight: .regular)
+        ghostLabel.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
         ghostLabel.textColor = .white
         ghost.contentView!.addSubview(ghostLabel)
 
@@ -188,13 +188,17 @@ final class App: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSWindowD
     }
 
     func showGhost() {
-        let pb = NSPasteboard.general // password managers tag copied secrets as concealed
-        let secret = pb.types?.contains(.init("org.nspasteboard.ConcealedType")) == true
-        ghostLabel.stringValue = secret ? "Hidden: password" : ghostPreview(pb.string(forType: .string))
         let screen = NSScreen.screens.first { NSMouseInRect(NSEvent.mouseLocation, $0.frame, false) } ?? NSScreen.main
         guard let area = screen?.visibleFrame else { return }
-        let pad: CGFloat = 16, fit = ghostLabel.fittingSize
-        let w = min(fit.width, area.width * 0.7), h = min(fit.height, area.height * 0.7)
+        let pad: CGFloat = 16
+        // As many lines as fit in 90% of the screen; one line is kept for "… N more lines".
+        let lineHeight = NSLayoutManager().defaultLineHeight(for: ghostLabel.font!)
+        let maxLines = max(1, Int((area.height * 0.9 - pad * 2) / lineHeight) - 1)
+        let pb = NSPasteboard.general // password managers tag copied secrets as concealed
+        let secret = pb.types?.contains(.init("org.nspasteboard.ConcealedType")) == true
+        ghostLabel.stringValue = secret ? "Hidden: password" : ghostPreview(pb.string(forType: .string), maxLines: maxLines)
+        let fit = ghostLabel.fittingSize
+        let w = min(fit.width, area.width * 0.9), h = min(fit.height, area.height * 0.9 - pad * 2)
         ghostLabel.frame = NSRect(x: pad, y: pad, width: w, height: h)
         ghost.setFrame(NSRect(x: area.midX - w / 2 - pad, y: area.midY - h / 2 - pad,
                               width: w + pad * 2, height: h + pad * 2), display: true)
