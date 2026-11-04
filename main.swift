@@ -17,8 +17,8 @@ let holdTime = 0.2
 
 // MARK: - Pure logic (checked by --selftest)
 
-/// Text for the hold-Fn overlay: capped so a huge clipboard can't fill the screen.
-func ghostPreview(_ s: String?, maxLines: Int = 30, maxCols: Int = 200) -> String {
+/// Text for the hold-Fn overlay (it scrolls); capped so a huge clipboard stays fast to lay out.
+func ghostPreview(_ s: String?, maxLines: Int = 2000, maxCols: Int = 300) -> String {
     guard let s, !s.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return "No text on clipboard" }
     let lines = s.components(separatedBy: "\n")
     let shown = lines.prefix(maxLines).map { String($0.prefix(maxCols)) }.joined(separator: "\n")
@@ -113,7 +113,8 @@ final class App: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSWindowD
                          styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
     let field = NSTextField()
     let ghost = NSPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
-    let ghostLabel = NSTextField(labelWithString: "")
+    let ghostScroll = NSTextView.scrollableTextView()
+    let ghostFont = NSFont.monospacedSystemFont(ofSize: 11, weight: .regular)
     var ghostTimer: DispatchWorkItem?
     var ghostWatch: Timer?
     var tap = TapDetector()
@@ -156,19 +157,31 @@ final class App: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSWindowD
         field.delegate = self
         panel.contentView!.addSubview(field)
 
-        // Hold-Fn clipboard ghost: faint, click-through, never takes focus.
+        // Hold-Fn clipboard ghost: translucent, scrollable, never takes focus.
         ghost.isOpaque = false
         ghost.backgroundColor = .clear
         ghost.hasShadow = false
         ghost.animationBehavior = .none // appear/disappear instantly, no system fade
         ghost.alphaValue = 0.9 // overlay opacity: lower = fainter
-        ghost.ignoresMouseEvents = true
+        ghost.ignoresMouseEvents = false // receives scroll-wheel/trackpad events while Fn is held
         ghost.level = .statusBar
         ghost.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         ghost.contentView = GhostView()
-        ghostLabel.font = .monospacedSystemFont(ofSize: 11, weight: .regular)
-        ghostLabel.textColor = .white
-        ghost.contentView!.addSubview(ghostLabel)
+        ghostScroll.drawsBackground = false
+        ghostScroll.hasHorizontalScroller = true
+        ghostScroll.autohidesScrollers = true
+        ghostScroll.scrollerStyle = .overlay
+        let tv = ghostScroll.documentView as! NSTextView
+        tv.isEditable = false
+        tv.isSelectable = false
+        tv.drawsBackground = false
+        tv.textContainerInset = .zero
+        tv.textContainer!.lineFragmentPadding = 0
+        tv.textContainer!.widthTracksTextView = false // long lines scroll sideways instead of wrapping
+        tv.textContainer!.containerSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        tv.isHorizontallyResizable = true
+        tv.maxSize = NSSize(width: CGFloat.greatestFiniteMagnitude, height: CGFloat.greatestFiniteMagnitude)
+        ghost.contentView!.addSubview(ghostScroll)
 
         // Watching the Fn key system-wide needs Accessibility permission.
         if !AXIsProcessTrustedWithOptions(["AXTrustedCheckOptionPrompt": true] as CFDictionary) {
@@ -202,20 +215,26 @@ final class App: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSWindowD
     }
 
     func showGhost() {
-        let screen = NSScreen.screens.first { NSMouseInRect(NSEvent.mouseLocation, $0.frame, false) } ?? NSScreen.main
-        guard let area = screen?.visibleFrame else { return }
-        let pad: CGFloat = 16
-        // As many lines as fit in 90% of the screen; one line is kept for "… N more lines".
-        let lineHeight = NSLayoutManager().defaultLineHeight(for: ghostLabel.font!)
-        let maxLines = max(1, Int((area.height * 0.9 - pad * 2) / lineHeight) - 1)
+        let mouse = NSEvent.mouseLocation
+        let screen = NSScreen.screens.first { NSMouseInRect(mouse, $0.frame, false) } ?? NSScreen.main
+        guard let area = screen?.visibleFrame, let tv = ghostScroll.documentView as? NSTextView,
+              let lm = tv.layoutManager, let tc = tv.textContainer else { return }
         let pb = NSPasteboard.general // password managers tag copied secrets as concealed
         let secret = pb.types?.contains(.init("org.nspasteboard.ConcealedType")) == true
-        ghostLabel.stringValue = secret ? "Hidden: password" : ghostPreview(pb.string(forType: .string), maxLines: maxLines)
-        let fit = ghostLabel.fittingSize
-        let w = min(fit.width, area.width * 0.9), h = min(fit.height, area.height * 0.9 - pad * 2)
-        ghostLabel.frame = NSRect(x: pad, y: pad, width: w, height: h)
-        ghost.setFrame(NSRect(x: area.midX - w / 2 - pad, y: area.midY - h / 2 - pad,
-                              width: w + pad * 2, height: h + pad * 2), display: true)
+        let text = secret ? "Hidden: password" : ghostPreview(pb.string(forType: .string))
+        tv.textStorage?.setAttributedString(NSAttributedString(string: text,
+            attributes: [.font: ghostFont, .foregroundColor: NSColor.white]))
+        lm.ensureLayout(for: tc)
+        let used = lm.usedRect(for: tc).size, pad: CGFloat = 16
+        let w = min(ceil(used.width), area.width * 0.9 - pad * 2), h = min(ceil(used.height), area.height * 0.9 - pad * 2)
+        let W = w + pad * 2, H = h + pad * 2
+        // Centered on the pointer (kept on screen) so scrolling lands on the preview, not the app behind it.
+        let x = min(max(mouse.x - W / 2, area.minX), area.maxX - W)
+        let y = min(max(mouse.y - H / 2, area.minY), area.maxY - H)
+        ghost.setFrame(NSRect(x: x, y: y, width: W, height: H), display: false)
+        ghostScroll.frame = NSRect(x: pad, y: pad, width: w, height: h)
+        tv.sizeToFit()
+        tv.scroll(.zero) // start at the top
         ghost.orderFrontRegardless()
         // Fn-up can be missed (secure input in password fields blocks key monitors), so poll the real key state.
         ghostWatch?.invalidate()
