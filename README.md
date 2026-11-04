@@ -45,6 +45,7 @@ open build/ClaudeClip.app
 | Type, then Enter | Sends it to Claude |
 | Esc, tap Fn again, or click elsewhere | Cancels |
 | Double-tap Fn | Clears the clipboard |
+| Hold Fn | Shows a faint preview of the clipboard (nothing is pasted). Release to hide it |
 
 The menu bar icon shows what's happening:
 

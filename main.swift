@@ -12,7 +12,17 @@ no explanation, no markdown fences, no preamble. If the answer spans several fil
 the file path before each file's code. If the request is unclear, make the most reasonable assumption and still reply with code only.
 """
 
+let holdTime = 0.35 // Fn released sooner = tap; held longer = clipboard ghost
+
 // MARK: - Pure logic (checked by --selftest)
+
+/// Text for the hold-Fn overlay: capped so a huge clipboard can't fill the screen.
+func ghostPreview(_ s: String?, maxLines: Int = 30, maxCols: Int = 200) -> String {
+    guard let s, !s.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return "No text on clipboard" }
+    let lines = s.components(separatedBy: "\n")
+    let shown = lines.prefix(maxLines).map { String($0.prefix(maxCols)) }.joined(separator: "\n")
+    return lines.count > maxLines ? shown + "\n… \(lines.count - maxLines) more lines" : shown
+}
 
 func stripFences(_ s: String) -> String {
     var lines = s.trimmingCharacters(in: .whitespacesAndNewlines).components(separatedBy: "\n")
@@ -36,7 +46,7 @@ struct TapDetector {
         if down { downAt = t; return false }
         defer { downAt = nil }
         guard let d = downAt else { return false }
-        return t - d < 0.35
+        return t - d < holdTime
     }
     mutating func otherKey() { downAt = nil }
 }
@@ -75,12 +85,22 @@ func vscodeWindowTitle() -> String? {
 
 final class KeyPanel: NSPanel { override var canBecomeKey: Bool { true } }
 
+final class GhostView: NSView {
+    override func draw(_ r: NSRect) {
+        NSColor.black.withAlphaComponent(0.7).setFill()
+        NSBezierPath(roundedRect: bounds, xRadius: 10, yRadius: 10).fill()
+    }
+}
+
 final class App: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSWindowDelegate {
     let status = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
     let info = NSMenuItem(title: "Ready", action: nil, keyEquivalent: "")
     let panel = KeyPanel(contentRect: NSRect(x: 0, y: 0, width: 400, height: 24),
                          styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
     let field = NSTextField()
+    let ghost = NSPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+    let ghostLabel = NSTextField(labelWithString: "")
+    var ghostTimer: DispatchWorkItem?
     var tap = TapDetector()
     var lastTap = 0.0
     var task: Process?
@@ -106,19 +126,66 @@ final class App: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSWindowD
         field.delegate = self
         panel.contentView!.addSubview(field)
 
+        // Hold-Fn clipboard ghost: faint, click-through, never takes focus.
+        ghost.isOpaque = false
+        ghost.backgroundColor = .clear
+        ghost.hasShadow = false
+        ghost.alphaValue = 0.6
+        ghost.ignoresMouseEvents = true
+        ghost.level = .statusBar
+        ghost.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
+        ghost.contentView = GhostView()
+        ghostLabel.font = .monospacedSystemFont(ofSize: 13, weight: .regular)
+        ghostLabel.textColor = .white
+        ghost.contentView!.addSubview(ghostLabel)
+
         // Watching the Fn key system-wide needs Accessibility permission.
         if !AXIsProcessTrustedWithOptions(["AXTrustedCheckOptionPrompt": true] as CFDictionary) {
             info.title = "Grant Accessibility in System Settings, then relaunch"
         }
         NSEvent.addGlobalMonitorForEvents(matching: .flagsChanged) { [weak self] in self?.flags($0) }
         NSEvent.addLocalMonitorForEvents(matching: .flagsChanged) { [weak self] in self?.flags($0); return $0 }
-        NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] _ in self?.tap.otherKey() }
-        NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] in self?.tap.otherKey(); return $0 }
+        NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] _ in self?.otherKey() }
+        NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] in self?.otherKey(); return $0 }
     }
 
     func flags(_ e: NSEvent) {
-        guard e.keyCode == 63 else { tap.otherKey(); return } // 63 = Fn / Globe
-        if tap.fn(down: e.modifierFlags.contains(.function), at: e.timestamp) { onTap(at: e.timestamp) }
+        guard e.keyCode == 63 else { otherKey(); return } // 63 = Fn / Globe
+        let down = e.modifierFlags.contains(.function)
+        if down { scheduleGhost() } else { hideGhost() }
+        if tap.fn(down: down, at: e.timestamp) { onTap(at: e.timestamp) }
+    }
+
+    func otherKey() { // Fn+arrow etc. is a shortcut, not a tap or a hold
+        tap.otherKey()
+        hideGhost()
+    }
+
+    // MARK: Ghost
+
+    func scheduleGhost() {
+        ghostTimer?.cancel()
+        let w = DispatchWorkItem { [weak self] in self?.showGhost() }
+        ghostTimer = w
+        DispatchQueue.main.asyncAfter(deadline: .now() + holdTime, execute: w)
+    }
+
+    func showGhost() {
+        ghostLabel.stringValue = ghostPreview(NSPasteboard.general.string(forType: .string))
+        let screen = NSScreen.screens.first { NSMouseInRect(NSEvent.mouseLocation, $0.frame, false) } ?? NSScreen.main
+        guard let area = screen?.visibleFrame else { return }
+        let pad: CGFloat = 16, fit = ghostLabel.fittingSize
+        let w = min(fit.width, area.width * 0.7), h = min(fit.height, area.height * 0.7)
+        ghostLabel.frame = NSRect(x: pad, y: pad, width: w, height: h)
+        ghost.setFrame(NSRect(x: area.midX - w / 2 - pad, y: area.midY - h / 2 - pad,
+                              width: w + pad * 2, height: h + pad * 2), display: true)
+        ghost.orderFrontRegardless()
+    }
+
+    func hideGhost() {
+        ghostTimer?.cancel()
+        ghostTimer = nil
+        ghost.orderOut(nil)
     }
 
     func onTap(at t: Double) {
@@ -244,6 +311,10 @@ if CommandLine.arguments.contains("--selftest") {
     precondition(pickProject(windowTitle: "● App.tsx — my-app", recent: [api, app]) == app)
     precondition(pickProject(windowTitle: "App.tsx — my-app-api", recent: [api, app]) == api) // no exact match → newest
     precondition(pickProject(windowTitle: nil, recent: []) == nil)
+    precondition(ghostPreview(nil) == "No text on clipboard" && ghostPreview("  \n") == "No text on clipboard")
+    precondition(ghostPreview("a\nb") == "a\nb")
+    precondition(ghostPreview("1\n2\n3\n4", maxLines: 2) == "1\n2\n… 2 more lines")
+    precondition(ghostPreview("abcdef", maxCols: 3) == "abc")
     var t = TapDetector()
     precondition(!t.fn(down: true, at: 0) && t.fn(down: false, at: 0.1))   // quick tap
     precondition(!t.fn(down: true, at: 1) && !t.fn(down: false, at: 1.6))  // held too long
