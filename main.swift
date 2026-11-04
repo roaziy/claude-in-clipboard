@@ -39,6 +39,14 @@ func pickProject(windowTitle: String?, recent: [URL]) -> URL? {
     return recent.first { parts.contains($0.lastPathComponent) } ?? recent.first
 }
 
+/// Menu line from `claude auth status --json`.
+func accountLabel(_ d: [String: Any]?) -> String {
+    guard let d else { return "Claude: unknown (is Claude Code installed?)" }
+    guard d["loggedIn"] as? Bool == true else { return "Claude: not logged in (run claude auth login)" }
+    let plan = (d["subscriptionType"] as? String).map { " · " + $0.capitalized } ?? ""
+    return "Claude: " + (d["email"] as? String ?? "logged in") + plan
+}
+
 struct TapDetector {
     var downAt: Double?
     /// True when Fn was pressed and released quickly with no other key in between.
@@ -92,9 +100,11 @@ final class GhostView: NSView {
     }
 }
 
-final class App: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSWindowDelegate {
+final class App: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSWindowDelegate, NSMenuDelegate {
     let status = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
     let info = NSMenuItem(title: "Ready", action: nil, keyEquivalent: "")
+    let projectItem = NSMenuItem(title: "VS Code: …", action: nil, keyEquivalent: "")
+    let accountItem = NSMenuItem(title: "Claude: …", action: nil, keyEquivalent: "")
     let panel = KeyPanel(contentRect: NSRect(x: 0, y: 0, width: 400, height: 24),
                          styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
     let field = NSTextField()
@@ -109,9 +119,13 @@ final class App: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSWindowD
 
     func applicationDidFinishLaunching(_ n: Notification) {
         let menu = NSMenu()
-        info.isEnabled = false
+        for item in [info, projectItem, accountItem] { item.isEnabled = false }
         menu.addItem(info)
         menu.addItem(.separator())
+        menu.addItem(projectItem)
+        menu.addItem(accountItem)
+        menu.addItem(.separator())
+        menu.delegate = self
         menu.addItem(NSMenuItem(title: "Quit ClaudeClip", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
         status.menu = menu
         setIcon(idleIcon)
@@ -292,6 +306,29 @@ final class App: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSWindowD
         info.title = "Error: " + msg.trimmingCharacters(in: .whitespacesAndNewlines).prefix(150)
     }
 
+    // MARK: Menu
+
+    func menuWillOpen(_ m: NSMenu) {
+        let dir = pickProject(windowTitle: vscodeWindowTitle(), recent: recentVSCodeFolders())
+        projectItem.title = "VS Code: " + (dir?.lastPathComponent ?? "no project found")
+        if #available(macOS 14.4, *) { projectItem.subtitle = dir.map { ($0.path as NSString).abbreviatingWithTildeInPath } }
+        refreshAccount() // async: menu shows the last known account until this returns
+    }
+
+    func refreshAccount() {
+        let p = Process(), out = Pipe()
+        p.executableURL = URL(fileURLWithPath: "/bin/zsh")
+        p.arguments = ["-lc", "exec claude auth status --json"]
+        p.standardOutput = out
+        p.standardError = FileHandle.nullDevice
+        p.terminationHandler = { _ in
+            let data = out.fileHandleForReading.readDataToEndOfFile()
+            let d = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+            DispatchQueue.main.async { self.accountItem.title = accountLabel(d) }
+        }
+        try? p.run()
+    }
+
     // MARK: Icon
 
     var idleIcon: String { task == nil ? "sparkles" : "hourglass" }
@@ -325,6 +362,9 @@ if CommandLine.arguments.contains("--selftest") {
     precondition(ghostPreview("a\nb") == "a\nb")
     precondition(ghostPreview("1\n2\n3\n4", maxLines: 2) == "1\n2\n… 2 more lines")
     precondition(ghostPreview("abcdef", maxCols: 3) == "abc")
+    precondition(accountLabel(["loggedIn": true, "email": "a@b.c", "subscriptionType": "max"]) == "Claude: a@b.c · Max")
+    precondition(accountLabel(["loggedIn": false]).hasPrefix("Claude: not logged in"))
+    precondition(accountLabel(nil).hasPrefix("Claude: unknown"))
     var t = TapDetector()
     precondition(!t.fn(down: true, at: 0) && t.fn(down: false, at: 0.1))   // quick tap
     precondition(!t.fn(down: true, at: 1) && !t.fn(down: false, at: 1.6))  // held too long

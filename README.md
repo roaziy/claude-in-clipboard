@@ -65,7 +65,7 @@ If an answer spans several files, they come as one block with a `// path/to/file
 2. Matches `my-app` against the folders VS Code has opened (`~/Library/Application Support/Code/User/workspaceStorage`) to get the full path.
 3. If nothing matches, uses the project you used most recently.
 
-Click the menu bar icon to see which folder it used.
+Click the menu bar icon to see which project it will use (name and path) and which Claude account and plan are logged in.
 
 ## Privacy and safety
 
