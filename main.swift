@@ -106,6 +106,9 @@ final class App: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSWindowD
     let info = NSMenuItem(title: "Ready", action: nil, keyEquivalent: "")
     let projectItem = NSMenuItem(title: "VS Code: …", action: nil, keyEquivalent: "")
     let accountItem = NSMenuItem(title: "Claude: …", action: nil, keyEquivalent: "")
+    var modelItems: [NSMenuItem] = []
+    // Aliases: Claude Code resolves them to the newest Opus / Sonnet, so this never goes stale.
+    var model: String { UserDefaults.standard.string(forKey: "model") ?? "opus" }
     let panel = KeyPanel(contentRect: NSRect(x: 0, y: 0, width: 400, height: 24),
                          styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
     let field = NSTextField()
@@ -125,6 +128,17 @@ final class App: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSWindowD
         menu.addItem(.separator())
         menu.addItem(projectItem)
         menu.addItem(accountItem)
+        menu.addItem(.separator())
+        let header = NSMenuItem(title: "Model", action: nil, keyEquivalent: "")
+        header.isEnabled = false
+        menu.addItem(header)
+        for (alias, name) in [("opus", "Opus (latest)"), ("sonnet", "Sonnet (latest)")] {
+            let item = NSMenuItem(title: name, action: #selector(pickModel(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = alias
+            menu.addItem(item)
+            modelItems.append(item)
+        }
         menu.addItem(.separator())
         menu.delegate = self
         menu.addItem(NSMenuItem(title: "Quit ClaudeClip", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
@@ -273,7 +287,7 @@ final class App: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSWindowD
         // Read-only tools: Claude can look at the code but can't edit files or run commands.
         // User settings only: a cloned repo's .claude/settings.json hooks would otherwise run shell commands.
         p.arguments = ["-lc", "exec claude \"$@\"", "zsh", "-p", "--strict-mcp-config", "--no-session-persistence",
-                       "--setting-sources", "user",
+                       "--setting-sources", "user", "--model", model,
                        "--tools", "Read,Grep,Glob", "--append-system-prompt", systemPrompt]
         p.currentDirectoryURL = dir
         p.standardInput = inp; p.standardOutput = out; p.standardError = err
@@ -283,7 +297,7 @@ final class App: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSWindowD
         try? inp.fileHandleForWriting.close()
         revert?.cancel()
         setIcon("hourglass")
-        info.title = "Working in \(dir.lastPathComponent)…"
+        info.title = "Working in \(dir.lastPathComponent) with \(model.capitalized)…"
         DispatchQueue.global().async {
             // ponytail: stderr read after stdout; would stall only if claude wrote >64KB to stderr
             let o = String(decoding: out.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
@@ -319,6 +333,11 @@ final class App: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSWindowD
         projectItem.title = "VS Code: " + (dir?.lastPathComponent ?? "no project found")
         if #available(macOS 14.4, *) { projectItem.subtitle = dir.map { ($0.path as NSString).abbreviatingWithTildeInPath } }
         refreshAccount() // async: menu shows the last known account until this returns
+        for item in modelItems { item.state = item.representedObject as? String == model ? .on : .off }
+    }
+
+    @objc func pickModel(_ item: NSMenuItem) {
+        UserDefaults.standard.set(item.representedObject as? String, forKey: "model")
     }
 
     func refreshAccount() {

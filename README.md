@@ -57,6 +57,8 @@ The menu bar icon shows what's happening:
 | ✓ + sound | Code is on the clipboard |
 | ⚠️ + sound | Failed. Click the icon to read the error |
 
+Pick the model from the menu: **Opus (latest)** (default) or **Sonnet (latest)**. Both always use the newest version.
+
 If an answer spans several files, they come as one block with a `// path/to/file` comment before each file.
 
 ## How it finds your project
