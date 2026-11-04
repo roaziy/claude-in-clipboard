@@ -3,6 +3,7 @@
 set -e
 cd "$(dirname "$0")"
 APP=build/ClaudeClip.app
+pkill -x ClaudeClip || true # a running copy whose files get replaced loses its macOS permissions
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS"
 cat > "$APP/Contents/Info.plist" <<'EOF'
@@ -20,5 +21,8 @@ cat > "$APP/Contents/Info.plist" <<'EOF'
 EOF
 swiftc -O -swift-version 5 -target arm64-apple-macos13 main.swift -o "$APP/Contents/MacOS/ClaudeClip"
 "$APP/Contents/MacOS/ClaudeClip" --selftest
-codesign --force -s - "$APP"
+# Sign with your Apple Development certificate if you have one, so macOS keeps the
+# Accessibility and Documents permissions across rebuilds. Otherwise ad hoc (CI).
+ID=$(security find-identity -v -p codesigning 2>/dev/null | awk '/Apple Development/ {print $2; exit}')
+codesign --force -s "${ID:--}" "$APP"
 echo "Built $APP"

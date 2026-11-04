@@ -34,8 +34,9 @@ open build/ClaudeClip.app
 ## Setup (once)
 
 1. **Accessibility:** System Settings → Privacy & Security → Accessibility → turn on **ClaudeClip**, then quit and reopen it. This lets it see the Fn key and read the VS Code window title.
-2. **Fn key:** System Settings → Keyboard → **Press 🌐 key to** → **Do Nothing**. Otherwise Fn also opens the emoji picker.
-3. **Optional:** System Settings → General → Login Items → add ClaudeClip.
+2. **Files:** the first time you prompt in a project inside Documents, Desktop or Downloads, macOS asks to let ClaudeClip access that folder. Click **Allow**. If you see `EPERM` in the menu, turn it on in System Settings → Privacy & Security → Files & Folders → ClaudeClip.
+3. **Fn key:** System Settings → Keyboard → **Press 🌐 key to** → **Do Nothing**. Otherwise Fn also opens the emoji picker.
+4. **Optional:** System Settings → General → Login Items → add ClaudeClip.
 
 ## Usage
 
@@ -83,7 +84,7 @@ Click the menu bar icon to see which project it will use (name and path) and whi
 - VS Code only, not Cursor or VS Code Insiders.
 - Two open projects with the same folder name: it picks the newer one.
 - Every prompt is a fresh chat, so no follow-ups.
-- Rebuilding changes the app's signature and macOS forgets the Accessibility permission. Turn it off and on again.
+- `build.sh` signs with your Apple Development certificate if you have one, so permissions survive rebuilds. Without one it signs ad hoc, and macOS forgets the permissions after every rebuild. Turn them off and on again.
 - You can't see what you type. To show the prompt box, set `panel.alphaValue = 1` in `main.swift` and rebuild.
 
 ## Development
