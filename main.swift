@@ -12,7 +12,8 @@ no explanation, no markdown fences, no preamble. If the answer spans several fil
 the file path before each file's code. If the request is unclear, make the most reasonable assumption and still reply with code only.
 """
 
-let holdTime = 0.35 // Fn released sooner = tap; held longer = clipboard ghost
+// Fn released sooner = tap; held longer = clipboard ghost. Raise it if slow taps open the ghost instead of the prompt.
+let holdTime = 0.2
 
 // MARK: - Pure logic (checked by --selftest)
 
@@ -145,6 +146,7 @@ final class App: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSWindowD
         ghost.isOpaque = false
         ghost.backgroundColor = .clear
         ghost.hasShadow = false
+        ghost.animationBehavior = .none // appear/disappear instantly, no system fade
         ghost.alphaValue = 0.6
         ghost.ignoresMouseEvents = true
         ghost.level = .statusBar
