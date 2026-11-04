@@ -101,6 +101,7 @@ final class App: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSWindowD
     let ghost = NSPanel(contentRect: .zero, styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
     let ghostLabel = NSTextField(labelWithString: "")
     var ghostTimer: DispatchWorkItem?
+    var ghostWatch: Timer?
     var tap = TapDetector()
     var lastTap = 0.0
     var task: Process?
@@ -171,7 +172,9 @@ final class App: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSWindowD
     }
 
     func showGhost() {
-        ghostLabel.stringValue = ghostPreview(NSPasteboard.general.string(forType: .string))
+        let pb = NSPasteboard.general // password managers tag copied secrets as concealed
+        let secret = pb.types?.contains(.init("org.nspasteboard.ConcealedType")) == true
+        ghostLabel.stringValue = secret ? "Hidden: password" : ghostPreview(pb.string(forType: .string))
         let screen = NSScreen.screens.first { NSMouseInRect(NSEvent.mouseLocation, $0.frame, false) } ?? NSScreen.main
         guard let area = screen?.visibleFrame else { return }
         let pad: CGFloat = 16, fit = ghostLabel.fittingSize
@@ -180,11 +183,18 @@ final class App: NSObject, NSApplicationDelegate, NSTextFieldDelegate, NSWindowD
         ghost.setFrame(NSRect(x: area.midX - w / 2 - pad, y: area.midY - h / 2 - pad,
                               width: w + pad * 2, height: h + pad * 2), display: true)
         ghost.orderFrontRegardless()
+        // Fn-up can be missed (secure input in password fields blocks key monitors), so poll the real key state.
+        ghostWatch?.invalidate()
+        ghostWatch = Timer.scheduledTimer(withTimeInterval: 0.15, repeats: true) { [weak self] _ in
+            if !NSEvent.modifierFlags.contains(.function) { self?.hideGhost() }
+        }
     }
 
     func hideGhost() {
         ghostTimer?.cancel()
         ghostTimer = nil
+        ghostWatch?.invalidate()
+        ghostWatch = nil
         ghost.orderOut(nil)
     }
 
