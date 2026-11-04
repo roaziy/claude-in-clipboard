@@ -1,0 +1,49 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: macos-latest
+    permissions:
+      contents: write # create the tag and release
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # need tags and history to pick the next version
+
+      - name: Build
+        run: ./build.sh
+
+      - name: Pick version
+        id: version
+        run: |
+          last=$(git describe --tags --abbrev=0 2>/dev/null || echo v0.0.0)
+          if [ "$last" = v0.0.0 ]; then range=HEAD; else range="$last..HEAD"; fi
+          IFS=. read -r major minor patch <<< "${last#v}"
+          if git log "$range" --format=%s | grep -q '^feat'; then
+            minor=$((minor + 1)); patch=0
+          else
+            patch=$((patch + 1))
+          fi
+          echo "tag=v$major.$minor.$patch" >> "$GITHUB_OUTPUT"
+          echo "range=$range" >> "$GITHUB_OUTPUT"
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+          RANGE: ${{ steps.version.outputs.range }}
+        run: |
+          ditto -c -k --keepParent build/ClaudeClip.app ClaudeClip.zip
+          git log "$RANGE" --format='- %s' > notes.md
+          gh release create "$TAG" ClaudeClip.zip --target "$GITHUB_SHA" --title "$TAG" --notes-file notes.md
