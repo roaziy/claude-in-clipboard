@@ -97,6 +97,10 @@ Click the menu bar icon to see which project it will use (name and path) and whi
 
 Version numbers follow the commit type: `fix:` bumps the patch (`0.0.1 → 0.0.2`), `feat:` bumps the minor (`0.1.0 → 0.2.0`).
 
+## License
+
+[MIT](LICENSE): free to use, change and share, including commercially. Keep the copyright notice.
+
 ---
 
 Not affiliated with Anthropic.
