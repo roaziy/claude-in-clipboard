@@ -418,7 +418,10 @@ if CommandLine.arguments.contains("--selftest") {
     exit(0)
 }
 
+// NSApplication must exist before App() creates its status item and windows:
+// older macOS (14) aborts with "CGSConnectionByID ... is_initialized" otherwise.
+let app = NSApplication.shared
 let delegate = App()
-NSApplication.shared.delegate = delegate
-NSApplication.shared.setActivationPolicy(.accessory)
-NSApplication.shared.run()
+app.delegate = delegate
+app.setActivationPolicy(.accessory)
+app.run()
